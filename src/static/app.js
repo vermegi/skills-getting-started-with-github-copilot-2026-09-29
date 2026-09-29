@@ -4,6 +4,29 @@ document.addEventListener("DOMContentLoaded", () => {
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
 
+  let messageTimeout;
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function showMessage(text, type) {
+    messageDiv.textContent = text;
+    messageDiv.className = type;
+    messageDiv.classList.remove("hidden");
+
+    // Hide message after 5 seconds
+    clearTimeout(messageTimeout);
+    messageTimeout = setTimeout(() => {
+      messageDiv.classList.add("hidden");
+    }, 5000);
+  }
+
   // Function to fetch activities from API
   async function fetchActivities() {
     try {
@@ -19,28 +42,42 @@ document.addEventListener("DOMContentLoaded", () => {
         const activityCard = document.createElement("div");
         activityCard.className = "activity-card";
 
-        const spotsLeft = details.max_participants - details.participants.length;
-        const participantsList = details.participants.length
-          ? details.participants
-              .map(
-                (participant) => `
+        const waitlist = details.waitlist || [];
+        const spotsLeft = Math.max(details.max_participants - details.participants.length, 0);
+        const renderPeople = (people, emptyText) =>
+          people.length
+            ? people
+                .map(
+                  (person) => `
                   <li>
-                    <span>${participant}</span>
-                    <button type="button" class="remove-participant" data-email="${encodeURIComponent(participant)}" aria-label="Unregister ${participant}" title="Unregister participant">&#128465;</button>
+                    <span>${escapeHtml(person)}</span>
+                    <button type="button" class="remove-participant" data-email="${encodeURIComponent(person)}" aria-label="Unregister ${escapeHtml(person)}" title="Unregister">&#128465;</button>
                   </li>`
-              )
-              .join("")
-          : "<li class=\"no-participants\">No participants yet</li>";
+                )
+                .join("")
+            : `<li class="no-participants">${emptyText}</li>`;
+        const participantsList = renderPeople(details.participants, "No participants yet");
+        const availability =
+          spotsLeft > 0
+            ? `${spotsLeft} spots left`
+            : `<span class="activity-full">Full</span> &ndash; ${waitlist.length} on waitlist`;
+        const waitlistSection = waitlist.length
+          ? `
+          <div class="participants waitlist">
+            <strong>Waitlist</strong>
+            <ol>${renderPeople(waitlist, "")}</ol>
+          </div>`
+          : "";
 
         activityCard.innerHTML = `
-          <h4>${name}</h4>
-          <p>${details.description}</p>
-          <p><strong>Schedule:</strong> ${details.schedule}</p>
-          <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          <h4>${escapeHtml(name)}</h4>
+          <p>${escapeHtml(details.description)}</p>
+          <p><strong>Schedule:</strong> ${escapeHtml(details.schedule)}</p>
+          <p><strong>Availability:</strong> ${availability}</p>
           <div class="participants">
             <strong>Participants</strong>
             <ul>${participantsList}</ul>
-          </div>
+          </div>${waitlistSection}
         `;
 
         activitiesList.appendChild(activityCard);
@@ -56,11 +93,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 { method: "DELETE" }
               );
 
+              const result = await response.json().catch(() => ({}));
+
               if (!response.ok) {
-                const result = await response.json();
                 throw new Error(result.detail || "Unable to unregister participant");
               }
 
+              showMessage(result.message, "success");
               await fetchActivities();
             } catch (error) {
               removeButton.disabled = false;
@@ -99,25 +138,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const result = await response.json();
 
       if (response.ok) {
-        messageDiv.textContent = result.message;
-        messageDiv.className = "success";
+        showMessage(result.message, result.status === "waitlisted" ? "info" : "success");
         signupForm.reset();
         await fetchActivities();
       } else {
-        messageDiv.textContent = result.detail || "An error occurred";
-        messageDiv.className = "error";
+        showMessage(result.detail || "An error occurred", "error");
       }
-
-      messageDiv.classList.remove("hidden");
-
-      // Hide message after 5 seconds
-      setTimeout(() => {
-        messageDiv.classList.add("hidden");
-      }, 5000);
     } catch (error) {
-      messageDiv.textContent = "Failed to sign up. Please try again.";
-      messageDiv.className = "error";
-      messageDiv.classList.remove("hidden");
+      showMessage("Failed to sign up. Please try again.", "error");
       console.error("Error signing up:", error);
     }
   });
