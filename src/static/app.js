@@ -6,6 +6,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let messageTimeout;
 
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function showMessage(text, type) {
     messageDiv.textContent = text;
     messageDiv.className = type;
@@ -41,8 +50,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 .map(
                   (person) => `
                   <li>
-                    <span>${person}</span>
-                    <button type="button" class="remove-participant" data-email="${encodeURIComponent(person)}" aria-label="Unregister ${person}" title="Unregister">&#128465;</button>
+                    <span>${escapeHtml(person)}</span>
+                    <button type="button" class="remove-participant" data-email="${encodeURIComponent(person)}" aria-label="Unregister ${escapeHtml(person)}" title="Unregister">&#128465;</button>
                   </li>`
                 )
                 .join("")
@@ -61,9 +70,9 @@ document.addEventListener("DOMContentLoaded", () => {
           : "";
 
         activityCard.innerHTML = `
-          <h4>${name}</h4>
-          <p>${details.description}</p>
-          <p><strong>Schedule:</strong> ${details.schedule}</p>
+          <h4>${escapeHtml(name)}</h4>
+          <p>${escapeHtml(details.description)}</p>
+          <p><strong>Schedule:</strong> ${escapeHtml(details.schedule)}</p>
           <p><strong>Availability:</strong> ${availability}</p>
           <div class="participants">
             <strong>Participants</strong>
@@ -84,7 +93,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 { method: "DELETE" }
               );
 
-              const result = await response.json();
+              const result = await response.json().catch(() => ({}));
 
               if (!response.ok) {
                 throw new Error(result.detail || "Unable to unregister participant");

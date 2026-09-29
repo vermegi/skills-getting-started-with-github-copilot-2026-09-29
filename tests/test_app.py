@@ -102,6 +102,7 @@ def test_unregister_returns_404_for_nonparticipant(client, activities):
         "detail": "Student is not signed up for this activity"
     }
 
+
 def fill_activity(activities, activity_name):
     activity = activities[activity_name]
     activity["participants"] = [
