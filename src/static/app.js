@@ -3,12 +3,27 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const searchInput = document.getElementById("activity-search");
+  const scheduleDay = document.getElementById("schedule-day");
+  let fetchSequence = 0;
 
   // Function to fetch activities from API
   async function fetchActivities() {
+    const currentFetch = ++fetchSequence;
     try {
-      const response = await fetch("/activities");
+      const params = new URLSearchParams();
+      if (searchInput.value.trim()) {
+        params.set("search", searchInput.value.trim());
+      }
+      if (scheduleDay.value) {
+        params.set("day", scheduleDay.value);
+      }
+      const query = params.toString();
+      const response = await fetch(`/activities${query ? `?${query}` : ""}`);
       const activities = await response.json();
+      if (currentFetch !== fetchSequence) {
+        return;
+      }
 
       // Clear loading message
       activitiesList.innerHTML = "";
@@ -75,11 +90,20 @@ document.addEventListener("DOMContentLoaded", () => {
         option.textContent = name;
         activitySelect.appendChild(option);
       });
+      if (Object.keys(activities).length === 0) {
+        activitiesList.innerHTML = "<p>No activities match your filters.</p>";
+      }
     } catch (error) {
+      if (currentFetch !== fetchSequence) {
+        return;
+      }
       activitiesList.innerHTML = "<p>Failed to load activities. Please try again later.</p>";
       console.error("Error fetching activities:", error);
     }
   }
+
+  searchInput.addEventListener("input", fetchActivities);
+  scheduleDay.addEventListener("change", fetchActivities);
 
   // Handle form submission
   signupForm.addEventListener("submit", async (event) => {
