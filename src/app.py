@@ -97,36 +97,93 @@ def get_activities():
     return activities
 
 
+def get_activity_or_404(activity_name: str) -> dict:
+    if activity_name not in activities:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    activity = activities[activity_name]
+    activity.setdefault("waitlist", [])
+    return activity
+
+
+def is_enrolled(activity: dict, email: str) -> bool:
+    return email in activity["participants"]
+
+
+def is_waitlisted(activity: dict, email: str) -> bool:
+    return email in activity["waitlist"]
+
+
+def activity_is_full(activity: dict) -> bool:
+    return len(activity["participants"]) >= activity["max_participants"]
+
+
+def add_to_activity(activity: dict, email: str) -> None:
+    activity["participants"].append(email)
+
+
+def remove_from_activity(activity: dict, email: str) -> None:
+    activity["participants"].remove(email)
+
+
+def add_to_waitlist(activity: dict, email: str) -> int:
+    activity["waitlist"].append(email)
+    return len(activity["waitlist"])
+
+
+def remove_from_waitlist(activity: dict, email: str) -> None:
+    activity["waitlist"].remove(email)
+
+
+def promote_from_waitlist(activity: dict) -> str | None:
+    if not activity["waitlist"] or activity_is_full(activity):
+        return None
+    promoted = activity["waitlist"].pop(0)
+    add_to_activity(activity, promoted)
+    return promoted
+
+
+def enrolled_message(activity_name: str, email: str) -> dict:
+    return {"message": f"Signed up {email} for {activity_name}", "status": "enrolled"}
+
+
+def waitlisted_message(activity_name: str, email: str, position: int) -> dict:
+    return {
+        "message": f"{activity_name} is full. Added {email} to the waitlist (position {position})",
+        "status": "waitlisted",
+        "waitlist_position": position,
+    }
+
+
+def left_waitlist_message(activity_name: str, email: str) -> dict:
+    return {
+        "message": f"Removed {email} from the waitlist for {activity_name}",
+        "promoted": None,
+    }
+
+
+def unregistered_message(activity_name: str, email: str, promoted: str | None) -> dict:
+    message = f"Unregistered {email} from {activity_name}"
+    if promoted:
+        message += f". {promoted} was enrolled from the waitlist"
+    return {"message": message, "promoted": promoted}
+
+
 @app.post("/activities/{activity_name}/signup")
 def signup_for_activity(activity_name: str, email: str):
     """Sign up a student for an activity, or add them to the waitlist if it is full"""
-    # Validate activity exists
-    if activity_name not in activities:
-        raise HTTPException(status_code=404, detail="Activity not found")
+    activity = get_activity_or_404(activity_name)
 
-    # Get the specific activity
-    activity = activities[activity_name]
-    waitlist = activity.setdefault("waitlist", [])
-
-    # Check if the student is already signed up or waitlisted
-    if email in activity["participants"]:
+    if is_enrolled(activity, email):
         raise HTTPException(status_code=400, detail="Student already signed up for this activity")
-    if email in waitlist:
+    if is_waitlisted(activity, email):
         raise HTTPException(status_code=400, detail="Student already on the waitlist for this activity")
 
-    # Add student to the waitlist if the activity is full
-    if len(activity["participants"]) >= activity["max_participants"]:
-        waitlist.append(email)
-        position = len(waitlist)
-        return {
-            "message": f"{activity_name} is full. Added {email} to the waitlist (position {position})",
-            "status": "waitlisted",
-            "waitlist_position": position,
-        }
+    if activity_is_full(activity):
+        position = add_to_waitlist(activity, email)
+        return waitlisted_message(activity_name, email, position)
 
-    # Add student
-    activity["participants"].append(email)
-    return {"message": f"Signed up {email} for {activity_name}", "status": "enrolled"}
+    add_to_activity(activity, email)
+    return enrolled_message(activity_name, email)
 
 
 @app.delete("/activities/{activity_name}/signup")
@@ -135,30 +192,15 @@ def unregister_from_activity(activity_name: str, email: str):
 
     When a participant unregisters, the first waitlisted student is auto-enrolled.
     """
-    if activity_name not in activities:
-        raise HTTPException(status_code=404, detail="Activity not found")
+    activity = get_activity_or_404(activity_name)
 
-    activity = activities[activity_name]
-    waitlist = activity.setdefault("waitlist", [])
+    if is_waitlisted(activity, email):
+        remove_from_waitlist(activity, email)
+        return left_waitlist_message(activity_name, email)
 
-    if email in waitlist:
-        waitlist.remove(email)
-        return {
-            "message": f"Removed {email} from the waitlist for {activity_name}",
-            "promoted": None,
-        }
-
-    if email not in activity["participants"]:
+    if not is_enrolled(activity, email):
         raise HTTPException(status_code=404, detail="Student is not signed up for this activity")
 
-    activity["participants"].remove(email)
-
-    promoted = None
-    if waitlist and len(activity["participants"]) < activity["max_participants"]:
-        promoted = waitlist.pop(0)
-        activity["participants"].append(promoted)
-
-    message = f"Unregistered {email} from {activity_name}"
-    if promoted:
-        message += f". {promoted} was enrolled from the waitlist"
-    return {"message": message, "promoted": promoted}
+    remove_from_activity(activity, email)
+    promoted = promote_from_waitlist(activity)
+    return unregistered_message(activity_name, email, promoted)
