@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 import os
 from pathlib import Path
+import re
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
@@ -84,8 +85,31 @@ def root():
 
 
 @app.get("/activities")
-def get_activities():
-    return activities
+def get_activities(search: str | None = None, day: str | None = None):
+    matching_activities = activities
+
+    if search:
+        search_term = search.casefold()
+        matching_activities = {
+            name: details
+            for name, details in matching_activities.items()
+            if search_term in name.casefold()
+            or search_term in details["description"].casefold()
+            or search_term in details["schedule"].casefold()
+        }
+
+    if day:
+        day_term = day.casefold().rstrip("s")
+        matching_activities = {
+            name: details
+            for name, details in matching_activities.items()
+            if re.search(
+                rf"\b{re.escape(day_term)}s?\b",
+                details["schedule"].casefold(),
+            )
+        }
+
+    return matching_activities
 
 
 @app.post("/activities/{activity_name}/signup")

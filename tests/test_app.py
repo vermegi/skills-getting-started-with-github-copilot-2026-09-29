@@ -18,6 +18,29 @@ def client():
     return TestClient(app_module.app)
 
 
+def test_get_activities_search_is_case_insensitive(client, activities):
+    response = client.get("/activities", params={"search": "CHESS"})
+
+    assert response.status_code == 200
+    assert list(response.json()) == ["Chess Club"]
+
+
+def test_get_activities_filters_by_schedule_day(client, activities):
+    response = client.get("/activities", params={"day": "Wednesday"})
+
+    assert response.status_code == 200
+    assert set(response.json()) == {"Gym Class", "Volleyball Club", "Art Club"}
+
+
+def test_get_activities_combines_search_and_schedule_filters(client, activities):
+    response = client.get(
+        "/activities", params={"search": "class", "day": "Thursday"}
+    )
+
+    assert response.status_code == 200
+    assert list(response.json()) == ["Programming Class"]
+
+
 def test_signup_adds_student_to_activity(client, activities):
     activity_name = "Art Club"
     email = "student@mergington.edu"
